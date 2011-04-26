@@ -1,5 +1,9 @@
 #!/usr/bin/env ruby
 
+# Script to run when a scanner button is pressed.
+# 
+# Installation: install scanbuttond and change buttonpressed.sh to run this script
+
 require 'logger'
 require 'fileutils'
 require 'open3'
