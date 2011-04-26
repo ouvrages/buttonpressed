@@ -1,0 +1,92 @@
+#!/usr/bin/env ruby
+
+require 'logger'
+require 'fileutils'
+require 'open3'
+
+unless Open3.respond_to?(:capture3)
+  def Open3.capture3(*cmd, &block)
+    binmode = false
+    stdin_data = ''
+      
+    res = popen3(*cmd) {|i, o, e|
+      if binmode
+        i.binmode
+        o.binmode
+        e.binmode
+      end
+      out_reader = Thread.new { o.read }
+      err_reader = Thread.new { e.read }
+      i.write stdin_data
+      i.close
+      [out_reader.value, err_reader.value]
+    }
+    res << $?
+    res
+  end
+end 
+
+include FileUtils
+
+root = File.join(ENV["HOME"], 'tmp/scan')
+
+mkpath root unless File.exists? root
+
+Dir.chdir root
+
+$logger = logger = Logger.new('scan.log')
+
+def run(*command)
+  $logger.info "Running #{command.inspect}"
+  output, error, status = Open3.capture3(*command)
+  $logger.info "Status: #{status}. Error: #{error}"
+  raise error if status != 0
+  output
+end
+
+begin
+  logger.info "scan started as #$0 with " + ARGV.inspect
+
+  button, device = ARGV
+  
+  n = 1
+  filename = nil
+  loop do
+    filename = ["scan", "_", Time.now.strftime("%Y-%m-%d"), "_", "%03d" % n, ".tiff"].join
+    break unless File.exists? filename
+    n += 1
+  end
+
+  logger.info "output file: #{filename}"
+  
+  command = [
+    "scanimage",
+    "--device-name", device,
+    "--format", "tiff",
+    #"--mode", "Gray",
+    "--mode", "Color",
+    "--resolution", 150,
+  ].map { |x| x.to_s }
+
+  image = run(*command)
+  File.open(filename, "w") { |f| f.write image }
+
+  jpg = filename.sub(/\.tiff/, '.jpg')
+  pdf = filename.sub(/\.tiff/, '.pdf')
+  run "convert", filename, jpg
+  run "convert", filename, pdf
+  
+  case button.to_i
+  when 1
+    run "lpr.orig", pdf
+  when 2, 3
+  when 4
+  end
+
+  
+rescue Exception => e
+  logger.error "#{e.message} (#{e.class.name})"
+  e.backtrace.each do |line|
+    logger.error line
+  end
+end
